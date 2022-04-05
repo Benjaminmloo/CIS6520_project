@@ -15,8 +15,17 @@ def is_metadata(timestamp):
 
     return False
 
+def is_match(search_string,  test_string, prefix_len = 0):
+    search_check  = int.from_bytes(search_string, 'big')
+    test_check = int.from_bytes(test_string, 'big')
 
-def search(disk_file, timestamp_len=2, threshold=3, ts_per_block=10000):
+    compare = search_check ^ test_check
+    suffix = compare >> 8 * prefix_len
+    return suffix == 0
+
+
+
+def search(disk_file, timestamp_len=4, threshold=2, ts_per_block=10000):
     """
     reads a disk file looking for repeated timestamps
 
@@ -49,7 +58,7 @@ def search(disk_file, timestamp_len=2, threshold=3, ts_per_block=10000):
 
                 while test_index < search_index + timestamp_len + threshold_len:
                     test_string = search_block[test_index: test_index + timestamp_len]
-                    if search_string == test_string:
+                    if is_match(search_string, test_string, 2):
                         match_count += 1
 
                     test_index += timestamp_len
@@ -65,6 +74,8 @@ def search(disk_file, timestamp_len=2, threshold=3, ts_per_block=10000):
 
 
 def main(argv):
+    print(is_match(b'\xFF\xFF', b'\xAA\xFF', 2))
+
     print(search(argv[0]))
 
 
