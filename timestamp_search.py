@@ -16,16 +16,18 @@ def is_metadata(timestamp):
     return False
 
 def is_match(search_string,  test_string, prefix_len = 0):
-    search_check  = int.from_bytes(search_string, 'big')
-    test_check = int.from_bytes(test_string, 'big')
+    search_check  = int.from_bytes(search_string, 'little')
+    test_check = int.from_bytes(test_string, 'little')
 
     compare = search_check ^ test_check
     suffix = compare >> 8 * prefix_len
-    return suffix == 0
+    return len(search_string) == len(test_string) and\
+           len(search_string) > prefix_len and\
+           suffix == 0
 
 
 
-def search(disk_file, timestamp_len=4, threshold=2, ts_per_block=10000):
+def search(disk_file, timestamp_len=2, threshold=2, ts_per_block=10000, prefix_len=0, window=6):
     """
     reads a disk file looking for repeated timestamps
 
@@ -33,11 +35,13 @@ def search(disk_file, timestamp_len=4, threshold=2, ts_per_block=10000):
 
     :param disk_file: file path to disk
     :param timestamp_len: the length in bytes of timestamp you are looking for
-    :param threshold: the number timestamp length blocks to be searched after the selected timestamp
+    :param threshold: the number of timestamp matches to indicate metadata found
     :param ts_per_block: the size of the blocks read from the file
     :return: array of indexes belonging to time stamps that were found to be repeated
+    :param prefix_len: the number of prefix bytes to ignore in timestamps
+    :param window: the number timestamp length blocks to be searched after the selected timestamp
     """
-    threshold_len = timestamp_len * threshold
+    window_len = timestamp_len * window
     block_len = ts_per_block * timestamp_len
 
 
@@ -45,36 +49,43 @@ def search(disk_file, timestamp_len=4, threshold=2, ts_per_block=10000):
     block_index = 0
     # read disk file block by block
     with open(disk_file, "rb") as f:
+
         search_block = f.read(block_len)
+        while search_block:
+            for search_index in range(0, len(search_block), timestamp_len):
+                search_string = search_block[search_index: search_index + timestamp_len]
 
-        for search_index in range(0, len(search_block), timestamp_len):
-            search_string = search_block[search_index: search_index + timestamp_len]
+                # perform simple validation to prevent unnecessary checks
+                if is_metadata(search_string):
+                    match_count = 0
 
-            # perform simple validation to prevent unnecessary checks
-            if is_metadata(search_string):
-                match_count = 0
+                    test_index = search_index + timestamp_len
 
-                test_index = search_index + timestamp_len
+                    while test_index < search_index + timestamp_len + window_len:
+                        test_string = search_block[test_index: test_index + timestamp_len]
+                        if is_match(search_string, test_string, prefix_len):
+                            match_count += 1
 
-                while test_index < search_index + timestamp_len + threshold_len:
-                    test_string = search_block[test_index: test_index + timestamp_len]
-                    if is_match(search_string, test_string, 2):
-                        match_count += 1
 
-                    test_index += timestamp_len
+                        if match_count >= threshold:
+                            print("index:{}\n\ttext:{}\n\tmatches:{}\n\tlast match index:{}\n\tlast match text:{}"\
+                                  .format(search_index, search_string, match_count, test_index, test_string))
+                            found_ts.append(search_index + block_index)
+                            test_index += search_index + timestamp_len + window_len
+                            search_index += window_len - timestamp_len
 
-                    if match_count >= threshold:
-                        print("index:{}\n\ttext:{}\n\tmatches:{}".format(search_index, search_string, match_count))
-                        found_ts.append(search_index + block_index)
-                        test_index += search_index + timestamp_len + threshold_len
-                        search_index += threshold_len - timestamp_len
-
-        block_index += block_len
+                        test_index += timestamp_len
+            search_block = f.read(block_len)
+            block_index += block_len
     return found_ts
 
 
 def main(argv):
-    print(is_match(b'\xFF\xFF', b'\xAA\xFF', 2))
+    print('positive test prefix match:{}'.format(is_match(b'\xFF\xFF\xFF', b'\xAA\xAA\xFF', 2)))
+    print('negative test prefix match:{}'.format(is_match(b'\xFF\xFF\xFF', b'\xAA\xAA\xAA', 2)))
+
+    print('positive test generic match:{}'.format(is_match(b'\xAA\xFF', b'\xAA\xFF', 0)))
+    print('negative test generic match:{}'.format(is_match(b'\xAA\xFF', b'\xAA\xAA', 0)))
 
     print(search(argv[0]))
 
