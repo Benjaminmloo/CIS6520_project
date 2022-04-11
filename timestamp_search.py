@@ -116,7 +116,7 @@ def main(argv):
     is_valid_date_dos(b'\x36\x72\x6f\x54')
 
     # exFAT
-    print(len(search(argv[0], timestamp_len=4, threshold=1, prefix_len=0, window=1, verbose=True)))
+    print(len(search(argv[0], timestamp_len=4, threshold=1, prefix_len=0, window=2, verbose=True)))
 
     #fat
 
